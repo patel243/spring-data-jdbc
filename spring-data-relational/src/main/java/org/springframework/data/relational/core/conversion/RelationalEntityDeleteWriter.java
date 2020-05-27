@@ -27,17 +27,18 @@ import org.springframework.lang.Nullable;
 import org.springframework.util.Assert;
 
 /**
- * Converts an entity that is about to be deleted into {@link DbAction}s inside a {@link AggregateChange} that need to
- * be executed against the database to recreate the appropriate state in the database. If the {@link AggregateChange}
- * has a reference to the entity and the entity has a version attribute, the delete will include an optimistic record
- * locking check.
+ * Converts an entity that is about to be deleted into {@link DbAction}s inside a {@link MutableAggregateChange} that
+ * need to be executed against the database to recreate the appropriate state in the database. If the
+ * {@link MutableAggregateChange} has a reference to the entity and the entity has a version attribute, the delete will
+ * include an optimistic record locking check.
  *
  * @author Jens Schauder
  * @author Mark Paluch
  * @author Bastian Wilhelm
  * @author Tyler Van Gorder
+ * @author Myeonghyeon Lee
  */
-public class RelationalEntityDeleteWriter implements EntityWriter<Object, AggregateChange<?>> {
+public class RelationalEntityDeleteWriter implements EntityWriter<Object, MutableAggregateChange<?>> {
 
 	private final RelationalMappingContext context;
 
@@ -49,7 +50,7 @@ public class RelationalEntityDeleteWriter implements EntityWriter<Object, Aggreg
 	}
 
 	/**
-	 * Fills the provided {@link AggregateChange} with the necessary {@link DbAction}s to delete the aggregate root
+	 * Fills the provided {@link MutableAggregateChange} with the necessary {@link DbAction}s to delete the aggregate root
 	 * identified by {@code id}. If {@code id} is {@code null} it is interpreted as "Delete all aggregates of the type
 	 * indicated by the aggregateChange".
 	 *
@@ -57,7 +58,7 @@ public class RelationalEntityDeleteWriter implements EntityWriter<Object, Aggreg
 	 * @param aggregateChange must not be {@code null}.
 	 */
 	@Override
-	public void write(@Nullable Object id, AggregateChange<?> aggregateChange) {
+	public void write(@Nullable Object id, MutableAggregateChange<?> aggregateChange) {
 
 		if (id == null) {
 			deleteAll(aggregateChange.getEntityType()).forEach(aggregateChange::addAction);
@@ -68,12 +69,18 @@ public class RelationalEntityDeleteWriter implements EntityWriter<Object, Aggreg
 
 	private List<DbAction<?>> deleteAll(Class<?> entityType) {
 
-		List<DbAction<?>> actions = new ArrayList<>();
+		List<DbAction<?>> deleteReferencedActions = new ArrayList<>();
 
 		context.findPersistentPropertyPaths(entityType, PersistentProperty::isEntity)
-				.filter(p -> !p.getRequiredLeafProperty().isEmbedded()).forEach(p -> actions.add(new DbAction.DeleteAll<>(p)));
+				.filter(p -> !p.getRequiredLeafProperty().isEmbedded()).forEach(p -> deleteReferencedActions.add(new DbAction.DeleteAll<>(p)));
 
-		Collections.reverse(actions);
+		Collections.reverse(deleteReferencedActions);
+
+		List<DbAction<?>> actions = new ArrayList<>();
+		if (!deleteReferencedActions.isEmpty()) {
+			actions.add(new DbAction.AcquireLockAllRoot<>(entityType));
+		}
+		actions.addAll(deleteReferencedActions);
 
 		DbAction.DeleteAllRoot<?> result = new DbAction.DeleteAllRoot<>(entityType);
 		actions.add(result);
@@ -83,7 +90,14 @@ public class RelationalEntityDeleteWriter implements EntityWriter<Object, Aggreg
 
 	private <T> List<DbAction<?>> deleteRoot(Object id, AggregateChange<T> aggregateChange) {
 
-		List<DbAction<?>> actions = new ArrayList<>(deleteReferencedEntities(id, aggregateChange));
+		List<DbAction<?>> deleteReferencedActions = deleteReferencedEntities(id, aggregateChange);
+
+		List<DbAction<?>> actions = new ArrayList<>();
+		if (!deleteReferencedActions.isEmpty()) {
+			actions.add(new DbAction.AcquireLockRoot<>(id, aggregateChange.getEntityType()));
+		}
+		actions.addAll(deleteReferencedActions);
+
 		actions.add(new DbAction.DeleteRoot<>(id, aggregateChange.getEntityType(), getVersion(aggregateChange)));
 
 		return actions;

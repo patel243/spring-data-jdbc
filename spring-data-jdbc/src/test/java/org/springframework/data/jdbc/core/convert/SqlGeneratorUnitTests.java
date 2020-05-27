@@ -25,7 +25,6 @@ import java.util.Set;
 import org.assertj.core.api.SoftAssertions;
 import org.junit.Before;
 import org.junit.Test;
-
 import org.springframework.data.annotation.Id;
 import org.springframework.data.annotation.ReadOnlyProperty;
 import org.springframework.data.annotation.Version;
@@ -36,7 +35,7 @@ import org.springframework.data.jdbc.core.PropertyPathTestingUtils;
 import org.springframework.data.jdbc.core.mapping.AggregateReference;
 import org.springframework.data.jdbc.core.mapping.JdbcMappingContext;
 import org.springframework.data.jdbc.core.mapping.PersistentPropertyPathTestUtils;
-import org.springframework.data.jdbc.testing.AnsiDialect;
+import org.springframework.data.relational.core.dialect.AnsiDialect;
 import org.springframework.data.mapping.PersistentPropertyPath;
 import org.springframework.data.relational.core.dialect.Dialect;
 import org.springframework.data.relational.core.mapping.Column;
@@ -46,9 +45,9 @@ import org.springframework.data.relational.core.mapping.RelationalMappingContext
 import org.springframework.data.relational.core.mapping.RelationalPersistentEntity;
 import org.springframework.data.relational.core.mapping.RelationalPersistentProperty;
 import org.springframework.data.relational.core.sql.Aliased;
+import org.springframework.data.relational.core.sql.LockMode;
 import org.springframework.data.relational.core.sql.SqlIdentifier;
 import org.springframework.data.relational.core.sql.Table;
-import org.springframework.data.relational.domain.Identifier;
 
 /**
  * Unit tests for the {@link SqlGenerator}.
@@ -60,6 +59,7 @@ import org.springframework.data.relational.domain.Identifier;
  * @author Mark Paluch
  * @author Tom Hombergs
  * @author Milan Milanov
+ * @author Myeonghyeon Lee
  */
 public class SqlGeneratorUnitTests {
 
@@ -94,8 +94,8 @@ public class SqlGeneratorUnitTests {
 
 		String sql = sqlGenerator.getFindOne();
 
-		SoftAssertions softAssertions = new SoftAssertions();
-		softAssertions.assertThat(sql) //
+		SoftAssertions.assertSoftly(softly -> softly //
+				.assertThat(sql) //
 				.startsWith("SELECT") //
 				.contains("dummy_entity.id1 AS id1,") //
 				.contains("dummy_entity.x_name AS x_name,") //
@@ -105,8 +105,34 @@ public class SqlGeneratorUnitTests {
 				.contains("ON ref.dummy_entity = dummy_entity.id1") //
 				.contains("WHERE dummy_entity.id1 = :id") //
 				// 1-N relationships do not get loaded via join
-				.doesNotContain("Element AS elements");
-		softAssertions.assertAll();
+				.doesNotContain("Element AS elements"));
+	}
+
+	@Test // DATAJDBC-493
+	public void getAcquireLockById() {
+
+		String sql = sqlGenerator.getAcquireLockById(LockMode.PESSIMISTIC_WRITE);
+
+		SoftAssertions.assertSoftly(softly -> softly //
+				.assertThat(sql) //
+				.startsWith("SELECT") //
+				.contains("dummy_entity.id1") //
+				.contains("WHERE dummy_entity.id1 = :id") //
+				.contains("FOR UPDATE") //
+				.doesNotContain("Element AS elements"));
+	}
+
+	@Test // DATAJDBC-493
+	public void getAcquireLockAll() {
+
+		String sql = sqlGenerator.getAcquireLockAll(LockMode.PESSIMISTIC_WRITE);
+
+		SoftAssertions.assertSoftly(softly -> softly //
+				.assertThat(sql) //
+				.startsWith("SELECT") //
+				.contains("dummy_entity.id1") //
+				.contains("FOR UPDATE") //
+				.doesNotContain("Element AS elements"));
 	}
 
 	@Test // DATAJDBC-112
@@ -178,7 +204,7 @@ public class SqlGeneratorUnitTests {
 	@Test // DATAJDBC-101
 	public void findAllSortedBySingleField() {
 
-		String sql = sqlGenerator.getFindAll(Sort.by("x_name"));
+		String sql = sqlGenerator.getFindAll(Sort.by("name"));
 
 		assertThat(sql).contains("SELECT", //
 				"dummy_entity.id1 AS id1", //
@@ -198,7 +224,7 @@ public class SqlGeneratorUnitTests {
 	public void findAllSortedByMultipleFields() {
 
 		String sql = sqlGenerator.getFindAll(
-				Sort.by(new Sort.Order(Sort.Direction.DESC, "x_name"), new Sort.Order(Sort.Direction.ASC, "x_other")));
+				Sort.by(new Sort.Order(Sort.Direction.DESC, "name"), new Sort.Order(Sort.Direction.ASC, "other")));
 
 		assertThat(sql).contains("SELECT", //
 				"dummy_entity.id1 AS id1", //
@@ -246,7 +272,7 @@ public class SqlGeneratorUnitTests {
 	@Test // DATAJDBC-101
 	public void findAllPagedAndSorted() {
 
-		String sql = sqlGenerator.getFindAll(PageRequest.of(3, 10, Sort.by("x_name")));
+		String sql = sqlGenerator.getFindAll(PageRequest.of(3, 10, Sort.by("name")));
 
 		assertThat(sql).contains("SELECT", //
 				"dummy_entity.id1 AS id1", //
@@ -351,7 +377,7 @@ public class SqlGeneratorUnitTests {
 
 		SqlGenerator sqlGenerator = createSqlGenerator(VersionedEntity.class, AnsiDialect.INSTANCE);
 
-		assertThat(sqlGenerator.getUpdateWithVersion()).containsSequence( //
+		assertThat(sqlGenerator.getUpdateWithVersion()).containsSubsequence( //
 				"UPDATE", //
 				"\"VERSIONED_ENTITY\"", //
 				"SET", //
@@ -389,7 +415,7 @@ public class SqlGeneratorUnitTests {
 
 		String findAll = sqlGenerator.getFindAll();
 
-		assertThat(findAll).containsSequence("SELECT",
+		assertThat(findAll).containsSubsequence("SELECT",
 				"\"child\".\"PARENT_OF_NO_ID_CHILD\" AS \"CHILD_PARENT_OF_NO_ID_CHILD\"", "FROM");
 	}
 
@@ -398,7 +424,7 @@ public class SqlGeneratorUnitTests {
 
 		SqlGenerator sqlGenerator = createSqlGenerator(DummyEntity.class, AnsiDialect.INSTANCE);
 
-		assertThat(sqlGenerator.getUpdate()).containsSequence( //
+		assertThat(sqlGenerator.getUpdate()).containsSubsequence( //
 				"UPDATE", //
 				"\"DUMMY_ENTITY\"", //
 				"SET", //

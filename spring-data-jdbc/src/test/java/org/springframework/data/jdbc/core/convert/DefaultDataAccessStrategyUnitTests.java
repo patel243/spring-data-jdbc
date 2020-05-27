@@ -21,11 +21,13 @@ import static org.mockito.Mockito.*;
 import static org.springframework.data.relational.core.sql.SqlIdentifier.*;
 
 import lombok.AllArgsConstructor;
+import lombok.Data;
 import lombok.RequiredArgsConstructor;
 
 import java.util.Arrays;
 import java.util.HashMap;
 
+import lombok.Value;
 import org.junit.Before;
 import org.junit.Test;
 import org.mockito.ArgumentCaptor;
@@ -49,6 +51,7 @@ import org.springframework.jdbc.support.KeyHolder;
  *
  * @author Jens Schauder
  * @author Mark Paluch
+ * @author Myeonghyeon Lee
  */
 public class DefaultDataAccessStrategyUnitTests {
 
@@ -72,7 +75,7 @@ public class DefaultDataAccessStrategyUnitTests {
 		Dialect dialect = HsqlDbDialect.INSTANCE;
 
 		converter = new BasicJdbcConverter(context, relationResolver, new JdbcCustomConversions(),
-				new DefaultJdbcTypeFactory(jdbcOperations));
+				new DefaultJdbcTypeFactory(jdbcOperations), dialect.getIdentifierProcessing());
 		accessStrategy = new DefaultDataAccessStrategy( //
 				new SqlGeneratorSource(context, converter, dialect), //
 				context, //
@@ -87,7 +90,7 @@ public class DefaultDataAccessStrategyUnitTests {
 
 		additionalParameters.put(SqlIdentifier.quoted("ID"), ID_FROM_ADDITIONAL_VALUES);
 
-		accessStrategy.insert(new DummyEntity(ORIGINAL_ID), DummyEntity.class, additionalParameters);
+		accessStrategy.insert(new DummyEntity(ORIGINAL_ID), DummyEntity.class, Identifier.from( additionalParameters));
 
 		verify(namedJdbcOperations).update(eq("INSERT INTO \"DUMMY_ENTITY\" (\"ID\") VALUES (:ID)"),
 				paramSourceCaptor.capture(), any(KeyHolder.class));
@@ -100,13 +103,13 @@ public class DefaultDataAccessStrategyUnitTests {
 
 		additionalParameters.put(unquoted("reference"), ID_FROM_ADDITIONAL_VALUES);
 
-		accessStrategy.insert(new DummyEntity(ORIGINAL_ID), DummyEntity.class, additionalParameters);
+		accessStrategy.insert(new DummyEntity(ORIGINAL_ID), DummyEntity.class, Identifier.from(additionalParameters));
 
 		verify(namedJdbcOperations).update(sqlCaptor.capture(), paramSourceCaptor.capture(), any(KeyHolder.class));
 
 		assertThat(sqlCaptor.getValue()) //
-				.containsSequence("INSERT INTO \"DUMMY_ENTITY\" (", "\"ID\"", ") VALUES (", ":id", ")") //
-				.containsSequence("INSERT INTO \"DUMMY_ENTITY\" (", "reference", ") VALUES (", ":reference", ")");
+				.containsSubsequence("INSERT INTO \"DUMMY_ENTITY\" (", "\"ID\"", ") VALUES (", ":id", ")") //
+				.containsSubsequence("INSERT INTO \"DUMMY_ENTITY\" (", "reference", ") VALUES (", ":reference", ")");
 		assertThat(paramSourceCaptor.getValue().getValue("id")).isEqualTo(ORIGINAL_ID);
 	}
 
@@ -115,12 +118,14 @@ public class DefaultDataAccessStrategyUnitTests {
 
 		DelegatingDataAccessStrategy relationResolver = new DelegatingDataAccessStrategy();
 
+		Dialect dialect = HsqlDbDialect.INSTANCE;
+
 		JdbcConverter converter = new BasicJdbcConverter(context, relationResolver,
 				new JdbcCustomConversions(Arrays.asList(BooleanToStringConverter.INSTANCE, StringToBooleanConverter.INSTANCE)),
-				new DefaultJdbcTypeFactory(jdbcOperations));
+				new DefaultJdbcTypeFactory(jdbcOperations), dialect.getIdentifierProcessing());
 
 		DefaultDataAccessStrategy accessStrategy = new DefaultDataAccessStrategy( //
-				new SqlGeneratorSource(context, converter, HsqlDbDialect.INSTANCE), //
+				new SqlGeneratorSource(context, converter, dialect), //
 				context, //
 				converter, //
 				namedJdbcOperations);
@@ -131,12 +136,49 @@ public class DefaultDataAccessStrategyUnitTests {
 
 		EntityWithBoolean entity = new EntityWithBoolean(ORIGINAL_ID, true);
 
-		accessStrategy.insert(entity, EntityWithBoolean.class, new HashMap<>());
+		accessStrategy.insert(entity, EntityWithBoolean.class, Identifier.empty());
 
 		verify(namedJdbcOperations).update(sqlCaptor.capture(), paramSourceCaptor.capture(), any(KeyHolder.class));
 
 		assertThat(paramSourceCaptor.getValue().getValue("id")).isEqualTo(ORIGINAL_ID);
 		assertThat(paramSourceCaptor.getValue().getValue("flag")).isEqualTo("T");
+	}
+
+	@Test // DATAJDBC-412
+	public void considersConfiguredWriteConverterForIdValueObjects() {
+
+		DelegatingDataAccessStrategy relationResolver = new DelegatingDataAccessStrategy();
+
+		Dialect dialect = HsqlDbDialect.INSTANCE;
+
+		JdbcConverter converter = new BasicJdbcConverter(context, relationResolver,
+				new JdbcCustomConversions(Arrays.asList(IdValueToStringConverter.INSTANCE)),
+				new DefaultJdbcTypeFactory(jdbcOperations), dialect.getIdentifierProcessing());
+
+		DefaultDataAccessStrategy accessStrategy = new DefaultDataAccessStrategy( //
+				new SqlGeneratorSource(context, converter, dialect), //
+				context, //
+				converter, //
+				namedJdbcOperations);
+
+		relationResolver.setDelegate(accessStrategy);
+
+		String rawId = "batman";
+
+		WithValueObjectId entity = new WithValueObjectId(new IdValue(rawId));
+		entity.value = "vs. superman";
+
+		accessStrategy.insert(entity, WithValueObjectId.class, Identifier.empty());
+
+		verify(namedJdbcOperations).update(anyString(), paramSourceCaptor.capture(), any(KeyHolder.class));
+
+		assertThat(paramSourceCaptor.getValue().getValue("id")).isEqualTo(rawId);
+		assertThat(paramSourceCaptor.getValue().getValue("value")).isEqualTo("vs. superman");
+
+		accessStrategy.findById(new IdValue(rawId), WithValueObjectId.class);
+
+		verify(namedJdbcOperations).queryForObject(anyString(), paramSourceCaptor.capture(), any(EntityRowMapper.class));
+		assertThat(paramSourceCaptor.getValue().getValue("id")).isEqualTo(rawId);
 	}
 
 	@RequiredArgsConstructor
@@ -150,6 +192,18 @@ public class DefaultDataAccessStrategyUnitTests {
 
 		@Id Long id;
 		boolean flag;
+	}
+
+	@Data
+	private static class WithValueObjectId {
+
+		@Id private final IdValue id;
+		String value;
+	}
+
+	@Value
+	private static class IdValue {
+		String id;
 	}
 
 	@WritingConverter
@@ -174,4 +228,14 @@ public class DefaultDataAccessStrategyUnitTests {
 		}
 	}
 
+	@WritingConverter
+	enum IdValueToStringConverter implements Converter<IdValue, String> {
+
+		INSTANCE;
+
+		@Override
+		public String convert(IdValue source) {
+			return source.id;
+		}
+	}
 }

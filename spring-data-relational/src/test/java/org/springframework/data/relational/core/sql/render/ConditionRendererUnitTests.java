@@ -20,6 +20,8 @@ import static org.assertj.core.api.Assertions.*;
 import org.junit.Test;
 
 import org.springframework.data.relational.core.sql.Column;
+import org.springframework.data.relational.core.sql.Conditions;
+import org.springframework.data.relational.core.sql.Functions;
 import org.springframework.data.relational.core.sql.StatementBuilder;
 import org.springframework.data.relational.core.sql.Table;
 
@@ -33,14 +35,63 @@ public class ConditionRendererUnitTests {
 	Table table = Table.create("my_table");
 	Column left = table.column("left");
 	Column right = table.column("right");
+	Column other = table.column("other");
 
 	@Test // DATAJDBC-309
 	public void shouldRenderEquals() {
 
-		String sql = SqlRenderer
-				.toString(StatementBuilder.select(left).from(table).where(left.isEqualTo(right)).build());
+		String sql = SqlRenderer.toString(StatementBuilder.select(left).from(table).where(left.isEqualTo(right)).build());
 
 		assertThat(sql).endsWith("WHERE my_table.left = my_table.right");
+	}
+
+	@Test // DATAJDBC-514
+	public void shouldRenderEqualsCaseInsensitive() {
+
+		String sql = SqlRenderer.toString(StatementBuilder.select(left).from(table)
+				.where(Conditions.isEqual(Functions.upper(left), Functions.upper(right))).build());
+
+		assertThat(sql).endsWith("WHERE UPPER(my_table.left) = UPPER(my_table.right)");
+	}
+
+	@Test // DATAJDBC-490
+	public void shouldRenderEqualsNested() {
+
+		String sql = SqlRenderer
+				.toString(StatementBuilder.select(left).from(table).where(Conditions.nest(left.isEqualTo(right))).build());
+
+		assertThat(sql).endsWith("WHERE (my_table.left = my_table.right)");
+	}
+
+	@Test // DATAJDBC-490
+	public void shouldRenderAndNest() {
+
+		String sql = SqlRenderer.toString(StatementBuilder.select(left).from(table)
+				.where(Conditions.nest(left.isEqualTo(right).and(left.isGreater(right)))).build());
+
+		assertThat(sql).endsWith("WHERE (my_table.left = my_table.right AND my_table.left > my_table.right)");
+	}
+
+	@Test // DATAJDBC-490
+	public void shouldRenderAndGroupOr() {
+
+		String sql = SqlRenderer.toString(StatementBuilder.select(left).from(table)
+				.where(Conditions.nest(left.isEqualTo(right).and(left.isGreater(right))).or(left.like(right))).build());
+
+		assertThat(sql).endsWith(
+				"WHERE (my_table.left = my_table.right AND my_table.left > my_table.right) OR my_table.left LIKE my_table.right");
+	}
+
+	@Test // DATAJDBC-490
+	public void shouldRenderAndGroupOrAndNested() {
+
+		String sql = SqlRenderer.toString(StatementBuilder.select(left).from(table)
+				.where(Conditions.nest(left.isEqualTo(right).and(left.isGreater(right)))
+						.or(Conditions.nest(left.like(right).and(right.like(left)))))
+				.build());
+
+		assertThat(sql).endsWith(
+				"WHERE (my_table.left = my_table.right AND my_table.left > my_table.right) OR (my_table.left LIKE my_table.right AND my_table.right LIKE my_table.left)");
 	}
 
 	@Test // DATAJDBC-309
@@ -64,6 +115,24 @@ public class ConditionRendererUnitTests {
 		assertThat(sql).endsWith("WHERE my_table.left < my_table.right");
 	}
 
+	@Test // DATAJDBC-513
+	public void shouldRenderBetween() {
+
+		String sql = SqlRenderer
+				.toString(StatementBuilder.select(left).from(table).where(left.between(right, other)).build());
+
+		assertThat(sql).endsWith("WHERE my_table.left BETWEEN my_table.right AND my_table.other");
+	}
+
+	@Test // DATAJDBC-513
+	public void shouldRenderNotBetween() {
+
+		String sql = SqlRenderer
+				.toString(StatementBuilder.select(left).from(table).where(left.notBetween(right, other)).build());
+
+		assertThat(sql).endsWith("WHERE my_table.left NOT BETWEEN my_table.right AND my_table.other");
+	}
+
 	@Test // DATAJDBC-309
 	public void shouldRenderIsLessOrEqualTo() {
 
@@ -76,8 +145,7 @@ public class ConditionRendererUnitTests {
 	@Test // DATAJDBC-309
 	public void shouldRenderIsGreater() {
 
-		String sql = SqlRenderer
-				.toString(StatementBuilder.select(left).from(table).where(left.isGreater(right)).build());
+		String sql = SqlRenderer.toString(StatementBuilder.select(left).from(table).where(left.isGreater(right)).build());
 
 		assertThat(sql).endsWith("WHERE my_table.left > my_table.right");
 	}
@@ -105,6 +173,14 @@ public class ConditionRendererUnitTests {
 		String sql = SqlRenderer.toString(StatementBuilder.select(left).from(table).where(left.like(right)).build());
 
 		assertThat(sql).endsWith("WHERE my_table.left LIKE my_table.right");
+	}
+
+	@Test // DATAJDBC-513
+	public void shouldRenderNotLike() {
+
+		String sql = SqlRenderer.toString(StatementBuilder.select(left).from(table).where(left.notLike(right)).build());
+
+		assertThat(sql).endsWith("WHERE my_table.left NOT LIKE my_table.right");
 	}
 
 	@Test // DATAJDBC-309

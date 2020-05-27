@@ -17,20 +17,23 @@ package org.springframework.data.jdbc.repository;
 
 import static java.util.Arrays.*;
 import static org.assertj.core.api.Assertions.*;
+import static org.assertj.core.api.SoftAssertions.*;
 
 import lombok.Data;
 
 import java.io.IOException;
-import java.util.List;
-
+import java.sql.ResultSet;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 
+import org.junit.Before;
 import org.junit.ClassRule;
 import org.junit.Rule;
 import org.junit.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.config.PropertiesFactoryBean;
+import org.springframework.context.ApplicationListener;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
@@ -39,13 +42,15 @@ import org.springframework.data.annotation.Id;
 import org.springframework.data.jdbc.repository.query.Query;
 import org.springframework.data.jdbc.repository.support.JdbcRepositoryFactory;
 import org.springframework.data.jdbc.testing.TestConfiguration;
+import org.springframework.data.relational.core.mapping.event.AbstractRelationalEvent;
+import org.springframework.data.relational.core.mapping.event.AfterLoadEvent;
 import org.springframework.data.repository.CrudRepository;
 import org.springframework.data.repository.core.NamedQueries;
 import org.springframework.data.repository.core.support.PropertiesBasedNamedQueries;
 import org.springframework.data.repository.query.Param;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
-import org.springframework.test.context.ContextConfiguration;
 import org.springframework.test.context.junit4.rules.SpringClassRule;
 import org.springframework.test.context.junit4.rules.SpringMethodRule;
 import org.springframework.test.jdbc.JdbcTestUtils;
@@ -55,8 +60,8 @@ import org.springframework.transaction.annotation.Transactional;
  * Very simple use cases for creation and usage of JdbcRepositories.
  *
  * @author Jens Schauder
+ * @author Mark Paluch
  */
-@ContextConfiguration
 @Transactional
 public class JdbcRepositoryIntegrationTests {
 
@@ -83,7 +88,21 @@ public class JdbcRepositoryIntegrationTests {
 			properties.setLocation(new ClassPathResource("META-INF/jdbc-named-queries.properties"));
 			properties.afterPropertiesSet();
 			return new PropertiesBasedNamedQueries(properties.getObject());
+		}
 
+		@Bean
+		MyEventListener eventListener() {
+			return new MyEventListener();
+		}
+	}
+
+	static class MyEventListener implements ApplicationListener<AbstractRelationalEvent<?>> {
+
+		private List<AbstractRelationalEvent<?>> events = new ArrayList<>();
+
+		@Override
+		public void onApplicationEvent(AbstractRelationalEvent<?> event) {
+			events.add(event);
 		}
 	}
 
@@ -92,6 +111,12 @@ public class JdbcRepositoryIntegrationTests {
 
 	@Autowired NamedParameterJdbcTemplate template;
 	@Autowired DummyEntityRepository repository;
+	@Autowired MyEventListener eventListener;
+
+	@Before
+	public void before() {
+		eventListener.events.clear();
+	}
 
 	@Test // DATAJDBC-95
 	public void savesAnEntity() {
@@ -263,7 +288,7 @@ public class JdbcRepositoryIntegrationTests {
 		assertThat(repository.findById(-1L)).isEmpty();
 	}
 
-	@Test // DATAJDBC-464
+	@Test // DATAJDBC-464, DATAJDBC-318
 	public void executeQueryWithParameterRequiringConversion() {
 
 		Instant now = Instant.now();
@@ -281,6 +306,32 @@ public class JdbcRepositoryIntegrationTests {
 		assertThat(repository.after(now)) //
 				.extracting(DummyEntity::getName) //
 				.containsExactly("second");
+
+		assertThat(repository.findAllByPointInTimeAfter(now)) //
+				.extracting(DummyEntity::getName) //
+				.containsExactly("second");
+	}
+
+	@Test // DATAJDBC-318
+	public void queryMethodShouldEmitEvents() {
+
+		repository.save(createDummyEntity());
+		eventListener.events.clear();
+
+		repository.findAllWithSql();
+
+		assertThat(eventListener.events).hasSize(1).hasOnlyElementsOfType(AfterLoadEvent.class);
+	}
+
+	@Test // DATAJDBC-318
+	public void queryMethodWithCustomRowMapperDoesNotEmitEvents() {
+
+		repository.save(createDummyEntity());
+		eventListener.events.clear();
+
+		repository.findAllWithCustomMapper();
+
+		assertThat(eventListener.events).isEmpty();
 	}
 
 	@Test // DATAJDBC-234
@@ -288,6 +339,47 @@ public class JdbcRepositoryIntegrationTests {
 
 		repository.save(createDummyEntity());
 		assertThat(repository.findAllByNamedQuery()).hasSize(1);
+	}
+
+	@Test // DATAJDBC-341
+	public void findWithMissingQuery() {
+
+		DummyEntity dummy = repository.save(createDummyEntity());
+
+		DummyEntity loaded = repository.withMissingColumn(dummy.idProp);
+
+		assertThat(loaded.idProp).isEqualTo(dummy.idProp);
+		assertThat(loaded.name).isNull();
+		assertThat(loaded.pointInTime).isNull();
+	}
+
+	@Test // DATAJDBC-529
+	public void existsWorksAsExpected() {
+
+		DummyEntity dummy = repository.save(createDummyEntity());
+
+		assertSoftly(softly -> {
+
+			softly.assertThat(repository.existsByName(dummy.getName())) //
+					.describedAs("Positive") //
+					.isTrue();
+			softly.assertThat(repository.existsByName("not an existing name")) //
+					.describedAs("Positive") //
+					.isFalse();
+		});
+	}
+
+	@Test // DATAJDBC-534
+	public void countByQueryDerivation() {
+
+		DummyEntity one = createDummyEntity();
+		DummyEntity two = createDummyEntity();
+		two.name = "other";
+		DummyEntity three = createDummyEntity();
+
+		repository.saveAll(asList(one, two, three));
+
+		assertThat(repository.countByName(one.getName())).isEqualTo(2);
 	}
 
 	private static DummyEntity createDummyEntity() {
@@ -302,9 +394,23 @@ public class JdbcRepositoryIntegrationTests {
 
 		List<DummyEntity> findAllByNamedQuery();
 
-		@Query("SELECT * FROM DUMMY_ENTITY WHERE POINT_IN_TIME > :threshhold")
-		List<DummyEntity> after(@Param("threshhold")Instant threshhold);
+		List<DummyEntity> findAllByPointInTimeAfter(Instant instant);
 
+		@Query("SELECT * FROM DUMMY_ENTITY")
+		List<DummyEntity> findAllWithSql();
+
+		@Query(value = "SELECT * FROM DUMMY_ENTITY", rowMapperClass = CustomRowMapper.class)
+		List<DummyEntity> findAllWithCustomMapper();
+
+		@Query("SELECT * FROM DUMMY_ENTITY WHERE POINT_IN_TIME > :threshhold")
+		List<DummyEntity> after(@Param("threshhold") Instant threshhold);
+
+		@Query("SELECT id_Prop from dummy_entity where id_Prop = :id")
+		DummyEntity withMissingColumn(@Param("id") Long id);
+
+		boolean existsByName(String name);
+
+		int countByName(String name);
 	}
 
 	@Data
@@ -312,5 +418,13 @@ public class JdbcRepositoryIntegrationTests {
 		String name;
 		@Id private Long idProp;
 		Instant pointInTime;
+	}
+
+	static class CustomRowMapper implements RowMapper<DummyEntity> {
+
+		@Override
+		public DummyEntity mapRow(ResultSet rs, int rowNum) {
+			return new DummyEntity();
+		}
 	}
 }

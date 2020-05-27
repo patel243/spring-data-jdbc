@@ -16,11 +16,13 @@
 package org.springframework.data.relational.core.sql.render;
 
 import org.springframework.data.relational.core.sql.AndCondition;
+import org.springframework.data.relational.core.sql.Between;
 import org.springframework.data.relational.core.sql.Comparison;
 import org.springframework.data.relational.core.sql.Condition;
 import org.springframework.data.relational.core.sql.In;
 import org.springframework.data.relational.core.sql.IsNull;
 import org.springframework.data.relational.core.sql.Like;
+import org.springframework.data.relational.core.sql.NestedCondition;
 import org.springframework.data.relational.core.sql.OrCondition;
 import org.springframework.lang.Nullable;
 
@@ -41,7 +43,7 @@ import org.springframework.lang.Nullable;
 class ConditionVisitor extends TypedSubtreeVisitor<Condition> implements PartRenderer {
 
 	private final RenderContext context;
-	private StringBuilder builder = new StringBuilder();
+	private final StringBuilder builder = new StringBuilder();
 
 	ConditionVisitor(RenderContext context) {
 		this.context = context;
@@ -74,6 +76,10 @@ class ConditionVisitor extends TypedSubtreeVisitor<Condition> implements PartRen
 			return new IsNullVisitor(context, builder::append);
 		}
 
+		if (segment instanceof Between) {
+			return new BetweenVisitor((Between) segment, context, builder::append);
+		}
+
 		if (segment instanceof Comparison) {
 			return new ComparisonVisitor(context, (Comparison) segment, builder::append);
 		}
@@ -84,6 +90,10 @@ class ConditionVisitor extends TypedSubtreeVisitor<Condition> implements PartRen
 
 		if (segment instanceof In) {
 			return new InVisitor(context, builder::append);
+		}
+
+		if (segment instanceof NestedCondition) {
+			return new NestedConditionVisitor(context, builder::append);
 		}
 
 		return null;

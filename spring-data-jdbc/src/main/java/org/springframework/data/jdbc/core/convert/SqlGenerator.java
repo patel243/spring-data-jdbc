@@ -15,13 +15,6 @@
  */
 package org.springframework.data.jdbc.core.convert;
 
-import lombok.Value;
-
-import java.util.*;
-import java.util.function.Function;
-import java.util.regex.Pattern;
-import java.util.stream.Collectors;
-
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jdbc.repository.support.SimpleJdbcRepository;
@@ -37,10 +30,14 @@ import org.springframework.data.relational.core.mapping.RelationalPersistentProp
 import org.springframework.data.relational.core.sql.*;
 import org.springframework.data.relational.core.sql.render.RenderContext;
 import org.springframework.data.relational.core.sql.render.SqlRenderer;
-import org.springframework.data.relational.domain.Identifier;
 import org.springframework.data.util.Lazy;
 import org.springframework.lang.Nullable;
 import org.springframework.util.Assert;
+
+import java.util.*;
+import java.util.function.Function;
+import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 /**
  * Generates SQL statements to be used by {@link SimpleJdbcRepository}
@@ -53,6 +50,7 @@ import org.springframework.util.Assert;
  * @author Tom Hombergs
  * @author Tyler Van Gorder
  * @author Milan Milanov
+ * @author Myeonghyeon Lee
  */
 class SqlGenerator {
 
@@ -259,6 +257,26 @@ class SqlGenerator {
 	}
 
 	/**
+	 * Create a {@code SELECT count(id) FROM … WHERE :id = … (LOCK CLAUSE)} statement.
+	 *
+	 * @param lockMode Lock clause mode.
+	 * @return the statement as a {@link String}. Guaranteed to be not {@literal null}.
+	 */
+	String getAcquireLockById(LockMode lockMode) {
+		return this.createAcquireLockById(lockMode);
+	}
+
+	/**
+	 * Create a {@code SELECT count(id) FROM … (LOCK CLAUSE)} statement.
+	 *
+	 * @param lockMode Lock clause mode.
+	 * @return the statement as a {@link String}. Guaranteed to be not {@literal null}.
+	 */
+	String getAcquireLockAll(LockMode lockMode) {
+		return this.createAcquireLockAll(lockMode);
+	}
+
+	/**
 	 * Create a {@code INSERT INTO … (…) VALUES(…)} statement.
 	 *
 	 * @return the statement as a {@link String}. Guaranteed to be not {@literal null}.
@@ -355,6 +373,33 @@ class SqlGenerator {
 
 		Select select = selectBuilder().where(getIdColumn().isEqualTo(getBindMarker(ID_SQL_PARAMETER))) //
 				.build();
+
+		return render(select);
+	}
+
+	private String createAcquireLockById(LockMode lockMode) {
+
+		Table table = this.getTable();
+
+		Select select = StatementBuilder //
+			.select(getIdColumn()) //
+			.from(table) //
+			.where(getIdColumn().isEqualTo(getBindMarker(ID_SQL_PARAMETER))) //
+			.lock(lockMode) //
+			.build();
+
+		return render(select);
+	}
+
+	private String createAcquireLockAll(LockMode lockMode) {
+
+		Table table = this.getTable();
+
+		Select select = StatementBuilder //
+			.select(getIdColumn()) //
+			.from(table) //
+			.lock(lockMode) //
+			.build();
 
 		return render(select);
 	}
@@ -659,19 +704,76 @@ class SqlGenerator {
 	}
 
 	private List<OrderByField> extractOrderByFields(Sort sort) {
-		return sort.stream()
-				.map(order -> OrderByField.from(Column.create(order.getProperty(), this.getTable()), order.getDirection()))
+
+		return sort.stream() //
+				.map(this::orderToOrderByField) //
 				.collect(Collectors.toList());
+	}
+
+	private OrderByField orderToOrderByField(Sort.Order order) {
+
+		SqlIdentifier columnName = this.entity.getRequiredPersistentProperty(order.getProperty()).getColumnName();
+		Column column = Column.create(columnName, this.getTable());
+		return OrderByField.from(column, order.getDirection());
 	}
 
 	/**
 	 * Value object representing a {@code JOIN} association.
 	 */
-	@Value
-	static class Join {
-		Table joinTable;
-		Column joinColumn;
-		Column parentId;
+	static final class Join {
+
+		private final Table joinTable;
+		private final Column joinColumn;
+		private final Column parentId;
+
+		Join(Table joinTable, Column joinColumn, Column parentId) {
+
+			Assert.notNull( joinTable,"JoinTable must not be null.");
+			Assert.notNull( joinColumn,"JoinColumn must not be null.");
+			Assert.notNull( parentId,"ParentId must not be null.");
+
+			this.joinTable = joinTable;
+			this.joinColumn = joinColumn;
+			this.parentId = parentId;
+		}
+
+		Table getJoinTable() {
+			return this.joinTable;
+		}
+
+		Column getJoinColumn() {
+			return this.joinColumn;
+		}
+
+		Column getParentId() {
+			return this.parentId;
+		}
+
+		@Override
+		public boolean equals(Object o) {
+
+			if (this == o) return true;
+			if (o == null || getClass() != o.getClass()) return false;
+			Join join = (Join) o;
+			return joinTable.equals(join.joinTable) &&
+					joinColumn.equals(join.joinColumn) &&
+					parentId.equals(join.parentId);
+		}
+
+		@Override
+		public int hashCode() {
+			return Objects.hash(joinTable, joinColumn, parentId);
+		}
+
+		@Override
+		public String toString() {
+
+			return "Join{" +
+					"joinTable=" + joinTable +
+					", joinColumn=" + joinColumn +
+					", parentId=" + parentId +
+					'}';
+		}
 	}
 
 	/**

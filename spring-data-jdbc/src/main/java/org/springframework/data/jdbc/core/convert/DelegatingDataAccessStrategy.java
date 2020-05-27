@@ -15,14 +15,11 @@
  */
 package org.springframework.data.jdbc.core.convert;
 
-import java.util.Map;
-
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.mapping.PersistentPropertyPath;
 import org.springframework.data.relational.core.mapping.RelationalPersistentProperty;
-import org.springframework.data.relational.domain.Identifier;
-import org.springframework.data.relational.core.sql.SqlIdentifier;
+import org.springframework.data.relational.core.sql.LockMode;
 import org.springframework.util.Assert;
 
 /**
@@ -32,20 +29,12 @@ import org.springframework.util.Assert;
  * @author Jens Schauder
  * @author Tyler Van Gorder
  * @author Milan Milanov
+ * @author Myeonghyeon Lee
  * @since 1.1
  */
 public class DelegatingDataAccessStrategy implements DataAccessStrategy {
 
 	private DataAccessStrategy delegate;
-
-	/*
-	 * (non-Javadoc)
-	 * @see org.springframework.data.jdbc.core.DataAccessStrategy#insert(java.lang.Object, java.lang.Class, java.util.Map)
-	 */
-	@Override
-	public <T> Object insert(T instance, Class<T> domainType, Map<SqlIdentifier, Object> additionalParameters) {
-		return delegate.insert(instance, domainType, additionalParameters);
-	}
 
 	/*
 	 * (non-Javadoc)
@@ -122,6 +111,24 @@ public class DelegatingDataAccessStrategy implements DataAccessStrategy {
 
 	/*
 	 * (non-Javadoc)
+	 * @see org.springframework.data.jdbc.core.DataAccessStrategy#acquireLockById(java.lang.Object, org.springframework.data.relational.core.sql.LockMode, java.lang.Class)
+	 */
+	@Override
+	public <T> void acquireLockById(Object id, LockMode lockMode, Class<T> domainType) {
+		delegate.acquireLockById(id, lockMode, domainType);
+	}
+
+	/*
+	 * (non-Javadoc)
+	 * @see org.springframework.data.jdbc.core.DataAccessStrategy#acquireLockAll(org.springframework.data.relational.core.sql.LockMode, java.lang.Class)
+	 */
+	@Override
+	public <T> void acquireLockAll(LockMode lockMode, Class<T> domainType) {
+		delegate.acquireLockAll(lockMode, domainType);
+	}
+
+	/*
+	 * (non-Javadoc)
 	 * @see org.springframework.data.jdbc.core.DataAccessStrategy#count(java.lang.Class)
 	 */
 	@Override
@@ -161,24 +168,12 @@ public class DelegatingDataAccessStrategy implements DataAccessStrategy {
 
 	/*
 	 * (non-Javadoc)
-	 * @see org.springframework.data.jdbc.core.RelationResolver#findAllByPath(org.springframework.data.relational.domain.Identifier, org.springframework.data.mapping.PersistentPropertyPath)
+	 * @see org.springframework.data.jdbc.core.RelationResolver#findAllByPath(org.springframework.data.jdbc.support.Identifier, org.springframework.data.mapping.PersistentPropertyPath)
 	 */
 	@Override
 	public Iterable<Object> findAllByPath(Identifier identifier,
-			PersistentPropertyPath<RelationalPersistentProperty> path) {
+			PersistentPropertyPath<? extends RelationalPersistentProperty> path) {
 		return delegate.findAllByPath(identifier, path);
-	}
-
-	/*
-	 * (non-Javadoc)
-	 * @see org.springframework.data.jdbc.core.DataAccessStrategy#findAllByProperty(java.lang.Object, org.springframework.data.relational.core.mapping.RelationalPersistentProperty)
-	 */
-	@Override
-	public <T> Iterable<T> findAllByProperty(Object rootId, RelationalPersistentProperty property) {
-
-		Assert.notNull(delegate, "Delegate is null");
-
-		return delegate.findAllByProperty(rootId, property);
 	}
 
 	/*

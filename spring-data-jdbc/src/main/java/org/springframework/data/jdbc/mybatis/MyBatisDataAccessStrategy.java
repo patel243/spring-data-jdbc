@@ -22,18 +22,18 @@ import java.util.HashMap;
 import java.util.Map;
 import java.util.stream.Collectors;
 
-import org.apache.ibatis.exceptions.PersistenceException;
 import org.apache.ibatis.session.SqlSession;
 import org.mybatis.spring.SqlSessionTemplate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-
+import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jdbc.core.convert.CascadingDataAccessStrategy;
 import org.springframework.data.jdbc.core.convert.DataAccessStrategy;
 import org.springframework.data.jdbc.core.convert.DefaultDataAccessStrategy;
 import org.springframework.data.jdbc.core.convert.DelegatingDataAccessStrategy;
+import org.springframework.data.jdbc.core.convert.Identifier;
 import org.springframework.data.jdbc.core.convert.JdbcConverter;
 import org.springframework.data.jdbc.core.convert.SqlGeneratorSource;
 import org.springframework.data.mapping.PersistentPropertyPath;
@@ -42,8 +42,8 @@ import org.springframework.data.relational.core.dialect.Dialect;
 import org.springframework.data.relational.core.mapping.RelationalMappingContext;
 import org.springframework.data.relational.core.mapping.RelationalPersistentProperty;
 import org.springframework.data.relational.core.sql.IdentifierProcessing;
+import org.springframework.data.relational.core.sql.LockMode;
 import org.springframework.data.relational.core.sql.SqlIdentifier;
-import org.springframework.data.relational.domain.Identifier;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcOperations;
 import org.springframework.util.Assert;
 
@@ -62,6 +62,7 @@ import org.springframework.util.Assert;
  * @author Mark Paluch
  * @author Tyler Van Gorder
  * @author Milan Milanov
+ * @author Myeonghyeon Lee
  */
 public class MyBatisDataAccessStrategy implements DataAccessStrategy {
 
@@ -147,27 +148,12 @@ public class MyBatisDataAccessStrategy implements DataAccessStrategy {
 
 	/*
 	 * (non-Javadoc)
-	 * @see org.springframework.data.jdbc.core.DataAccessStrategy#insert(java.lang.Object, java.lang.Class, java.util.Map)
-	 */
-	@Override
-	public <T> Object insert(T instance, Class<T> domainType, Map<SqlIdentifier, Object> additionalParameters) {
-
-		MyBatisContext myBatisContext = new MyBatisContext(null, instance, domainType,
-				convertToParameterMap(additionalParameters));
-		sqlSession().insert(namespace(domainType) + ".insert", myBatisContext);
-
-		return myBatisContext.getId();
-	}
-
-	/*
-	 * (non-Javadoc)
 	 * @see org.springframework.data.jdbc.core.DataAccessStrategy#insert(java.lang.Object, java.lang.Class, ParentKeys)
 	 */
 	@Override
 	public <T> Object insert(T instance, Class<T> domainType, Identifier identifier) {
 
-		MyBatisContext myBatisContext = new MyBatisContext(null, instance, domainType,
-				convertToParameterMap(identifier.toMap()));
+		MyBatisContext myBatisContext = new MyBatisContext(identifier, instance, domainType);
 		sqlSession().insert(namespace(domainType) + ".insert", myBatisContext);
 
 		return myBatisContext.getId();
@@ -266,6 +252,37 @@ public class MyBatisDataAccessStrategy implements DataAccessStrategy {
 
 	/*
 	 * (non-Javadoc)
+	 * @see org.springframework.data.jdbc.core.DataAccessStrategy#acquireLockById(java.lang.Object, org.springframework.data.relational.core.sql.LockMode, java.lang.Class)
+	 */
+	@Override
+	public <T> void acquireLockById(Object id, LockMode lockMode, Class<T> domainType) {
+
+		String statement = namespace(domainType) + ".acquireLockById";
+		MyBatisContext parameter = new MyBatisContext(id, null, domainType, Collections.emptyMap());
+
+		long result = sqlSession().selectOne(statement, parameter);
+		if (result < 1) {
+
+			String message = String.format("The lock target does not exist. id: %s, statement: %s", id, statement);
+			throw new EmptyResultDataAccessException(message, 1);
+		}
+	}
+
+	/*
+	 * (non-Javadoc)
+	 * @see org.springframework.data.jdbc.core.DataAccessStrategy#acquireLockAll(org.springframework.data.relational.core.sql.LockMode, java.lang.Class)
+	 */
+	@Override
+	public <T> void acquireLockAll(LockMode lockMode, Class<T> domainType) {
+
+		String statement = namespace(domainType) + ".acquireLockAll";
+		MyBatisContext parameter = new MyBatisContext(null, null, domainType, Collections.emptyMap());
+
+		sqlSession().selectOne(statement, parameter);
+	}
+
+	/*
+	 * (non-Javadoc)
 	 * @see org.springframework.data.jdbc.core.DataAccessStrategy#findById(java.lang.Object, java.lang.Class)
 	 */
 	@Override
@@ -300,33 +317,14 @@ public class MyBatisDataAccessStrategy implements DataAccessStrategy {
 
 	@Override
 	public Iterable<Object> findAllByPath(Identifier identifier,
-			PersistentPropertyPath<RelationalPersistentProperty> path) {
+			PersistentPropertyPath<? extends RelationalPersistentProperty> path) {
 
 		String statementName = namespace(path.getBaseProperty().getOwner().getType()) + ".findAllByPath-"
 				+ path.toDotPath();
 
-		try {
-			return sqlSession().selectList(statementName,
-					new MyBatisContext(identifier, null, path.getRequiredLeafProperty().getType()));
-		} catch (PersistenceException pex) {
+		return sqlSession().selectList(statementName,
+				new MyBatisContext(identifier, null, path.getRequiredLeafProperty().getType()));
 
-			LOG.debug(String.format("Didn't find %s in the MyBatis session. Falling back to findAllByPath.", statementName),
-					pex);
-
-			return DataAccessStrategy.super.findAllByPath(identifier, path);
-		}
-	}
-
-	/*
-	 * (non-Javadoc)
-	 * @see org.springframework.data.jdbc.core.DataAccessStrategy#findAllByProperty(java.lang.Object, org.springframework.data.relational.core.mapping.RelationalPersistentProperty)
-	 */
-	@Override
-	public <T> Iterable<T> findAllByProperty(Object rootId, RelationalPersistentProperty property) {
-
-		String statement = namespace(property.getOwner().getType()) + ".findAllByProperty-" + property.getName();
-		MyBatisContext parameter = new MyBatisContext(rootId, null, property.getType(), Collections.emptyMap());
-		return sqlSession().selectList(statement, parameter);
 	}
 
 	/*

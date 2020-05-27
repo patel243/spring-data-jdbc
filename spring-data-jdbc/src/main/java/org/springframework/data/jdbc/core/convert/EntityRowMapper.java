@@ -19,7 +19,6 @@ import java.sql.ResultSet;
 
 import org.springframework.data.relational.core.mapping.PersistentPropertyPathExtension;
 import org.springframework.data.relational.core.mapping.RelationalPersistentEntity;
-import org.springframework.data.relational.domain.Identifier;
 import org.springframework.jdbc.core.RowMapper;
 
 /**
@@ -64,7 +63,8 @@ public class EntityRowMapper<T> implements RowMapper<T> {
 	@Override
 	public T mapRow(ResultSet resultSet, int rowNumber) {
 
-		return path == null ? converter.mapRow(entity, resultSet, rowNumber)
+		return path == null //
+				? converter.mapRow(entity, resultSet, rowNumber) //
 				: converter.mapRow(path, resultSet, identifier, rowNumber);
 	}
 

@@ -1,6 +1,90 @@
 Spring Data JDBC Changelog
 =========================
 
+Changes in version 2.0.0.RELEASE (2020-05-12)
+---------------------------------------------
+* DATAJDBC-538 - Locks do not work for DB2.
+* DATAJDBC-534 - Derived Query support count projection.
+* DATAJDBC-532 - Remove Travis CI.
+* DATAJDBC-530 - The sorting property might be set as the property name.
+* DATAJDBC-529 - Derived query existsByToken throws exception when entity doesn't exists.
+* DATAJDBC-528 - Release 2.0 GA (Neumann).
+* DATAJDBC-493 - Deadlock occurs when competing with Jdbc Repository Update and Delete.
+* DATAJDBC-257 - Run integration tests with IBM DB2.
+
+
+Changes in version 2.0.0.RC2 (2020-04-28)
+-----------------------------------------
+* DATAJDBC-520 - Improve documentation for MappedCollection.
+* DATAJDBC-518 - Allow combination of CriteriaDefinition instances.
+* DATAJDBC-517 - Release 2.0 RC2 (Neumann).
+* DATAJDBC-507 - Change starting versions for optimistic locking to the schema used in the rest of Spring Data.
+* DATAJDBC-480 - Move off deprecated EntityInstantiators.
+* DATAJDBC-318 - Derived Queries.
+
+
+Changes in version 1.1.7.RELEASE (2020-04-28)
+---------------------------------------------
+* DATAJDBC-520 - Improve documentation for MappedCollection.
+* DATAJDBC-511 - Release 1.1.7 (Moore SR7).
+
+
+Changes in version 1.0.17.RELEASE (2020-04-28)
+----------------------------------------------
+* DATAJDBC-509 - Fix findByFirstnameLike @Query example in README.
+* DATAJDBC-506 - Fix some typos in code and documentation.
+* DATAJDBC-495 - Release 1.0.17 (Lovelace SR17).
+
+
+Changes in version 2.0.0.RC1 (2020-03-31)
+-----------------------------------------
+* DATAJDBC-516 - BasicRelationalConverter too aggressively trying to convert entities.
+* DATAJDBC-514 - Add infrastructure for query derivation in Spring Data Relational.
+* DATAJDBC-513 - Introduce Query, Criteria and Update Objects for Spring Data Relational.
+* DATAJDBC-512 - Add default dialect for H2 Database.
+* DATAJDBC-510 - Add BasicJdbcConverter constructor with IdentifierProcessing.
+* DATAJDBC-509 - Fix findByFirstnameLike @Query example in README.
+* DATAJDBC-506 - Fix some typos in code and documentation.
+* DATAJDBC-504 - Release 2.0 RC1 (Neumann).
+* DATAJDBC-487 - Default IdentifierProcessing should respect JDBC driver's setting.
+* DATAJDBC-455 - Database Dialect discovery.
+* DATAJDBC-454 - Remove ids from events where full entities are present.
+* DATAJDBC-453 - Bring DbAction and AggregateChange into a form that is somewhat future proof.
+* DATAJDBC-341 - Map NULL values in EntityRowMapper for columns not being fetched in the query.
+
+
+Changes in version 1.1.6.RELEASE (2020-03-25)
+---------------------------------------------
+* DATAJDBC-509 - Fix findByFirstnameLike @Query example in README.
+* DATAJDBC-506 - Fix some typos in code and documentation.
+* DATAJDBC-496 - Release 1.1.6 (Moore SR6).
+
+
+Changes in version 2.0.0.M4 (2020-03-11)
+----------------------------------------
+* DATAJDBC-503 - Adapt to Mockito 3.3 changes.
+* DATAJDBC-492 - AbstractJdbcConfiguration should use JdbcMappingContext instead of RelationalMappingContext.
+* DATAJDBC-491 - Quoting all database identifiers breaks queries to tables in custom schema.
+* DATAJDBC-490 - Support condition nesting.
+* DATAJDBC-488 - Deadlock occurs when competing with Jdbc Repository Update.
+* DATAJDBC-486 - Release 2.0 M4 (Neumann).
+* DATAJDBC-381 - Using backticks in column names leads to failure during INSERT with MySQL.
+
+
+Changes in version 1.1.5.RELEASE (2020-02-26)
+---------------------------------------------
+* DATAJDBC-488 - Deadlock occurs when competing with Jdbc Repository Update.
+* DATAJDBC-483 - Correct reference docs.
+* DATAJDBC-472 - Release 1.1.5 (Moore SR5).
+
+
+Changes in version 1.0.16.RELEASE (2020-02-26)
+----------------------------------------------
+* DATAJDBC-485 - Travis Build is broken for branch 1.0.x.
+* DATAJDBC-483 - Correct reference docs.
+* DATAJDBC-471 - Release 1.0.16 (Lovelace SR16).
+
+
 Changes in version 2.0.0.M3 (2020-02-12)
 ----------------------------------------
 * DATAJDBC-484 - Date related tests in JdbcRepositoryIntegrationTests fail with Java 11.
@@ -363,6 +447,15 @@ Changes in version 1.0.0.M2 (2018-04-13)
 Changes in version 1.0.0.M1 (2018-02-06)
 ----------------------------------------
 * DATAJDBC-171 - Release 1.0 M1 (Lovelace).
+
+
+
+
+
+
+
+
+
 
 
 

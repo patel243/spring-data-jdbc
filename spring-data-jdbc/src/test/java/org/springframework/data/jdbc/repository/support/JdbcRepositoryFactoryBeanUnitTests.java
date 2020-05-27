@@ -53,7 +53,7 @@ import org.springframework.test.util.ReflectionTestUtils;
  * @author Mark Paluch
  * @author Evgeni Dimitrov
  */
-@RunWith(MockitoJUnitRunner.class)
+@RunWith(MockitoJUnitRunner.Silent.class)
 public class JdbcRepositoryFactoryBeanUnitTests {
 
 	JdbcRepositoryFactoryBean<DummyEntityRepository, DummyEntity, Long> factoryBean;
@@ -61,8 +61,7 @@ public class JdbcRepositoryFactoryBeanUnitTests {
 	@Mock DataAccessStrategy dataAccessStrategy;
 	@Mock ApplicationEventPublisher publisher;
 	@Mock(answer = Answers.RETURNS_DEEP_STUBS) ListableBeanFactory beanFactory;
-	@Mock
-	Dialect dialect;
+	@Mock Dialect dialect;
 
 	RelationalMappingContext mappingContext;
 
@@ -78,10 +77,11 @@ public class JdbcRepositoryFactoryBeanUnitTests {
 
 		ObjectProvider<DataAccessStrategy> provider = mock(ObjectProvider.class);
 		when(beanFactory.getBeanProvider(DataAccessStrategy.class)).thenReturn(provider);
-		when(provider.getIfAvailable(any())).then((Answer) invocation -> ((Supplier) invocation.getArgument(0)).get());
+		when(provider.getIfAvailable(any()))
+				.then((Answer<?>) invocation -> ((Supplier<?>) invocation.getArgument(0)).get());
 	}
 
-	@Test
+	@Test // DATAJDBC-151
 	public void setsUpBasicInstanceCorrectly() {
 
 		factoryBean.setDataAccessStrategy(dataAccessStrategy);
@@ -95,14 +95,14 @@ public class JdbcRepositoryFactoryBeanUnitTests {
 		assertThat(factoryBean.getObject()).isNotNull();
 	}
 
-	@Test(expected = IllegalArgumentException.class)
+	@Test(expected = IllegalArgumentException.class) // DATAJDBC-151
 	public void requiresListableBeanFactory() {
 
 		factoryBean.setBeanFactory(mock(BeanFactory.class));
 	}
 
 	@Test(expected = IllegalStateException.class) // DATAJDBC-155
-	public void afterPropertiesThowsExceptionWhenNoMappingContextSet() {
+	public void afterPropertiesThrowsExceptionWhenNoMappingContextSet() {
 
 		factoryBean.setMappingContext(null);
 		factoryBean.setApplicationEventPublisher(publisher);

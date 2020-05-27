@@ -19,6 +19,7 @@ package org.springframework.data.relational.core.dialect;
  * A {@link Dialect} for HsqlDb.
  *
  * @author Jens Schauder
+ * @author Myeonghyeon Lee
  */
 public class HsqlDbDialect extends AbstractDialect {
 
@@ -29,6 +30,11 @@ public class HsqlDbDialect extends AbstractDialect {
 	@Override
 	public LimitClause limit() {
 		return LIMIT_CLAUSE;
+	}
+
+	@Override
+	public LockClause lock() {
+		return AnsiDialect.LOCK_CLAUSE;
 	}
 
 	private static final LimitClause LIMIT_CLAUSE = new LimitClause() {

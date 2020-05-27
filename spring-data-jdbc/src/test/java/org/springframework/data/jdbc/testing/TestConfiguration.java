@@ -37,6 +37,7 @@ import org.springframework.data.jdbc.core.convert.JdbcCustomConversions;
 import org.springframework.data.jdbc.core.convert.RelationResolver;
 import org.springframework.data.jdbc.core.convert.SqlGeneratorSource;
 import org.springframework.data.jdbc.core.mapping.JdbcMappingContext;
+import org.springframework.data.jdbc.repository.config.DialectResolver;
 import org.springframework.data.jdbc.repository.support.JdbcRepositoryFactory;
 import org.springframework.data.relational.core.dialect.Dialect;
 import org.springframework.data.relational.core.mapping.NamingStrategy;
@@ -54,6 +55,7 @@ import org.springframework.transaction.PlatformTransactionManager;
  * @author Jens Schauder
  * @author Mark Paluch
  * @author Fei Dong
+ * @author Myeonghyeon Lee
  */
 @Configuration
 @ComponentScan // To pick up configuration classes (per activated profile)
@@ -66,10 +68,10 @@ public class TestConfiguration {
 	@Bean
 	JdbcRepositoryFactory jdbcRepositoryFactory(
 			@Qualifier("defaultDataAccessStrategy") DataAccessStrategy dataAccessStrategy, RelationalMappingContext context,
-			JdbcConverter converter, Optional<NamedQueries> namedQueries) {
+			Dialect dialect, JdbcConverter converter, Optional<NamedQueries> namedQueries) {
 
-		JdbcRepositoryFactory factory = new JdbcRepositoryFactory(dataAccessStrategy, context, converter, publisher,
-				namedParameterJdbcTemplate());
+		JdbcRepositoryFactory factory = new JdbcRepositoryFactory(dataAccessStrategy, context, converter, dialect,
+				publisher, namedParameterJdbcTemplate());
 		namedQueries.ifPresent(factory::setNamedQueries);
 		return factory;
 	}
@@ -110,13 +112,19 @@ public class TestConfiguration {
 
 	@Bean
 	JdbcConverter relationalConverter(RelationalMappingContext mappingContext, @Lazy RelationResolver relationResolver,
-			CustomConversions conversions, @Qualifier("namedParameterJdbcTemplate") NamedParameterJdbcOperations template) {
+			CustomConversions conversions, @Qualifier("namedParameterJdbcTemplate") NamedParameterJdbcOperations template,
+			Dialect dialect) {
 
 		return new BasicJdbcConverter( //
 				mappingContext, //
 				relationResolver, //
 				conversions, //
-				new DefaultJdbcTypeFactory(template.getJdbcOperations()) //
-		);
+				new DefaultJdbcTypeFactory(template.getJdbcOperations()), //
+				dialect.getIdentifierProcessing());
+	}
+
+	@Bean
+	Dialect jdbcDialect(NamedParameterJdbcOperations operations) {
+		return DialectResolver.getDialect(operations.getJdbcOperations());
 	}
 }

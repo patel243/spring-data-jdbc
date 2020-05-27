@@ -20,7 +20,6 @@ import static org.assertj.core.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
-import junit.framework.AssertionFailedError;
 import lombok.RequiredArgsConstructor;
 import lombok.Value;
 import lombok.With;
@@ -48,6 +47,8 @@ import org.springframework.data.jdbc.core.convert.SqlGeneratorSource;
 import org.springframework.data.jdbc.core.mapping.JdbcMappingContext;
 import org.springframework.data.jdbc.repository.support.JdbcRepositoryFactory;
 import org.springframework.data.jdbc.repository.support.SimpleJdbcRepository;
+import org.springframework.data.relational.core.dialect.Dialect;
+import org.springframework.data.relational.core.dialect.H2Dialect;
 import org.springframework.data.relational.core.dialect.HsqlDbDialect;
 import org.springframework.data.relational.core.mapping.RelationalMappingContext;
 import org.springframework.data.relational.core.mapping.event.AfterDeleteEvent;
@@ -57,11 +58,13 @@ import org.springframework.data.relational.core.mapping.event.BeforeDeleteEvent;
 import org.springframework.data.relational.core.mapping.event.BeforeSaveEvent;
 import org.springframework.data.relational.core.mapping.event.Identifier;
 import org.springframework.data.relational.core.mapping.event.RelationalEvent;
+import org.springframework.data.relational.core.mapping.event.WithId;
 import org.springframework.data.repository.PagingAndSortingRepository;
 import org.springframework.jdbc.core.JdbcOperations;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcOperations;
 import org.springframework.jdbc.core.namedparam.SqlParameterSource;
 import org.springframework.jdbc.support.KeyHolder;
+import org.springframework.lang.Nullable;
 
 /**
  * Unit tests for application events via {@link SimpleJdbcRepository}.
@@ -71,6 +74,7 @@ import org.springframework.jdbc.support.KeyHolder;
  * @author Oliver Gierke
  * @author Myeonghyeon Lee
  * @author Milan Milanov
+ * @author Myeonghyeon Lee
  */
 public class SimpleJdbcRepositoryEventsUnitTests {
 
@@ -85,16 +89,17 @@ public class SimpleJdbcRepositoryEventsUnitTests {
 		RelationalMappingContext context = new JdbcMappingContext();
 		NamedParameterJdbcOperations operations = createIdGeneratingOperations();
 		DelegatingDataAccessStrategy delegatingDataAccessStrategy = new DelegatingDataAccessStrategy();
+		Dialect dialect = HsqlDbDialect.INSTANCE;
 		JdbcConverter converter = new BasicJdbcConverter(context, delegatingDataAccessStrategy, new JdbcCustomConversions(),
-				new DefaultJdbcTypeFactory(operations.getJdbcOperations()));
-		SqlGeneratorSource generatorSource = new SqlGeneratorSource(context, converter, HsqlDbDialect.INSTANCE);
+				new DefaultJdbcTypeFactory(operations.getJdbcOperations()), dialect.getIdentifierProcessing());
+		SqlGeneratorSource generatorSource = new SqlGeneratorSource(context, converter, dialect);
 
 		this.dataAccessStrategy = spy(new DefaultDataAccessStrategy(generatorSource, context, converter, operations));
 		delegatingDataAccessStrategy.setDelegate(dataAccessStrategy);
 		doReturn(true).when(dataAccessStrategy).update(any(), any());
 
-		JdbcRepositoryFactory factory = new JdbcRepositoryFactory(dataAccessStrategy, context, converter, publisher,
-				operations);
+		JdbcRepositoryFactory factory = new JdbcRepositoryFactory(dataAccessStrategy, context, converter,
+				H2Dialect.INSTANCE, publisher, operations);
 
 		this.repository = factory.getRepository(DummyEntityRepository.class);
 	}
@@ -143,12 +148,21 @@ public class SimpleJdbcRepositoryEventsUnitTests {
 
 		assertThat(publisher.events).extracting( //
 				RelationalEvent::getClass, //
-				e -> e.getOptionalEntity().orElseGet(AssertionFailedError::new), //
-				RelationalEvent::getId //
+				this::getEntity, //
+				this::getId //
 		).containsExactly( //
 				Tuple.tuple(BeforeDeleteEvent.class, entity, Identifier.of(23L)), //
 				Tuple.tuple(AfterDeleteEvent.class, entity, Identifier.of(23L)) //
 		);
+	}
+
+	private Identifier getId(RelationalEvent e) {
+		return ((WithId) e).getId();
+	}
+
+	@Nullable
+	private Object getEntity(RelationalEvent e) {
+		return e.getEntity();
 	}
 
 	@Test // DATAJDBC-99

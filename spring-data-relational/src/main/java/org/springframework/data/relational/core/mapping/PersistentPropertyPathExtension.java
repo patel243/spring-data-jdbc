@@ -15,8 +15,6 @@
  */
 package org.springframework.data.relational.core.mapping;
 
-import lombok.EqualsAndHashCode;
-
 import org.springframework.data.mapping.PersistentProperty;
 import org.springframework.data.mapping.PersistentPropertyPath;
 import org.springframework.data.mapping.context.MappingContext;
@@ -26,6 +24,8 @@ import org.springframework.data.util.Lazy;
 import org.springframework.lang.Nullable;
 import org.springframework.util.Assert;
 
+import java.util.Objects;
+
 /**
  * A wrapper around a {@link org.springframework.data.mapping.PersistentPropertyPath} for making common operations
  * available used in SQL generation and conversion
@@ -33,12 +33,11 @@ import org.springframework.util.Assert;
  * @author Jens Schauder
  * @since 1.1
  */
-@EqualsAndHashCode(exclude = { "columnAlias", "context" })
 public class PersistentPropertyPathExtension {
 
 	private final RelationalPersistentEntity<?> entity;
-	private final @Nullable PersistentPropertyPath<RelationalPersistentProperty> path;
-	private final MappingContext<RelationalPersistentEntity<?>, RelationalPersistentProperty> context;
+	private final @Nullable PersistentPropertyPath<? extends RelationalPersistentProperty> path;
+	private final MappingContext<? extends RelationalPersistentEntity<?>, ? extends RelationalPersistentProperty> context;
 
 	private final Lazy<SqlIdentifier> columnAlias = Lazy.of(() -> prefixWithTableAlias(getColumnName()));
 
@@ -49,7 +48,7 @@ public class PersistentPropertyPathExtension {
 	 * @param entity Root entity of the path. Must not be {@literal null}.
 	 */
 	public PersistentPropertyPathExtension(
-			MappingContext<RelationalPersistentEntity<?>, RelationalPersistentProperty> context,
+			MappingContext<? extends RelationalPersistentEntity<?>, ? extends RelationalPersistentProperty> context,
 			RelationalPersistentEntity<?> entity) {
 
 		Assert.notNull(context, "Context must not be null.");
@@ -67,8 +66,8 @@ public class PersistentPropertyPathExtension {
 	 * @param path must not be {@literal null}.
 	 */
 	public PersistentPropertyPathExtension(
-			MappingContext<RelationalPersistentEntity<?>, RelationalPersistentProperty> context,
-			PersistentPropertyPath<RelationalPersistentProperty> path) {
+			MappingContext<? extends RelationalPersistentEntity<?>, ? extends RelationalPersistentProperty> context,
+			PersistentPropertyPath<? extends RelationalPersistentProperty> path) {
 
 		Assert.notNull(context, "Context must not be null.");
 		Assert.notNull(path, "Path must not be null.");
@@ -319,7 +318,7 @@ public class PersistentPropertyPathExtension {
 	 */
 	public PersistentPropertyPathExtension extendBy(RelationalPersistentProperty property) {
 
-		PersistentPropertyPath<RelationalPersistentProperty> newPath = path == null //
+		PersistentPropertyPath<? extends RelationalPersistentProperty> newPath = path == null //
 				? context.getPersistentPropertyPath(property.getName(), entity.getType()) //
 				: context.getPersistentPropertyPath(path.toDotPath() + "." + property.getName(), entity.getType());
 
@@ -367,7 +366,7 @@ public class PersistentPropertyPathExtension {
 	 * @return Guaranteed to be not {@literal null}.
 	 * @throws IllegalStateException if this path is empty.
 	 */
-	public PersistentPropertyPath<RelationalPersistentProperty> getRequiredPersistentPropertyPath() {
+	public PersistentPropertyPath<? extends RelationalPersistentProperty> getRequiredPersistentPropertyPath() {
 
 		Assert.state(path != null, "No path.");
 
@@ -413,7 +412,7 @@ public class PersistentPropertyPathExtension {
 			return suffix;
 		}
 
-		PersistentPropertyPath<RelationalPersistentProperty> parentPath = path.getParentPath();
+		PersistentPropertyPath<? extends RelationalPersistentProperty> parentPath = path.getParentPath();
 		RelationalPersistentProperty parentLeaf = parentPath.getRequiredLeafProperty();
 
 		if (!parentLeaf.isEmbedded()) {
@@ -436,4 +435,18 @@ public class PersistentPropertyPathExtension {
 				: columnName.transform(name -> tableAlias.getReference(IdentifierProcessing.NONE) + "_" + name);
 	}
 
+	@Override
+	public boolean equals(Object o) {
+
+		if (this == o) return true;
+		if (o == null || getClass() != o.getClass()) return false;
+		PersistentPropertyPathExtension that = (PersistentPropertyPathExtension) o;
+		return entity.equals(that.entity) &&
+				path.equals(that.path);
+	}
+
+	@Override
+	public int hashCode() {
+		return Objects.hash(entity, path);
+	}
 }

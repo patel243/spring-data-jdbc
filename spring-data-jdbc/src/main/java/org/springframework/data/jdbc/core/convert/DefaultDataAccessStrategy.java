@@ -18,6 +18,7 @@ package org.springframework.data.jdbc.core.convert;
 import static org.springframework.data.jdbc.core.convert.SqlGenerator.*;
 
 import java.sql.JDBCType;
+import java.sql.ResultSet;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
@@ -36,13 +37,14 @@ import org.springframework.data.mapping.PersistentProperty;
 import org.springframework.data.mapping.PersistentPropertyAccessor;
 import org.springframework.data.mapping.PersistentPropertyPath;
 import org.springframework.data.mapping.PropertyHandler;
+import org.springframework.data.relational.core.dialect.LockClause;
 import org.springframework.data.relational.core.mapping.PersistentPropertyPathExtension;
 import org.springframework.data.relational.core.mapping.RelationalMappingContext;
 import org.springframework.data.relational.core.mapping.RelationalPersistentEntity;
 import org.springframework.data.relational.core.mapping.RelationalPersistentProperty;
 import org.springframework.data.relational.core.sql.IdentifierProcessing;
+import org.springframework.data.relational.core.sql.LockMode;
 import org.springframework.data.relational.core.sql.SqlIdentifier;
-import org.springframework.data.relational.domain.Identifier;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcOperations;
 import org.springframework.jdbc.core.namedparam.SqlParameterSource;
@@ -63,6 +65,7 @@ import org.springframework.util.Assert;
  * @author Tom Hombergs
  * @author Tyler Van Gorder
  * @author Milan Milanov
+ * @author Myeonghyeon Lee
  * @since 1.1
  */
 public class DefaultDataAccessStrategy implements DataAccessStrategy {
@@ -93,16 +96,6 @@ public class DefaultDataAccessStrategy implements DataAccessStrategy {
 		this.context = context;
 		this.converter = converter;
 		this.operations = operations;
-	}
-
-	/*
-	 * (non-Javadoc)
-	 * @see org.springframework.data.jdbc.core.DataAccessStrategy#insert(java.lang.Object, java.lang.Class, java.util.Map)
-	 */
-	@Override
-	@Nullable
-	public <T> Object insert(T instance, Class<T> domainType, Map<SqlIdentifier, Object> additionalParameters) {
-		return insert(instance, domainType, Identifier.from(additionalParameters));
 	}
 
 	/*
@@ -250,6 +243,30 @@ public class DefaultDataAccessStrategy implements DataAccessStrategy {
 
 	/*
 	 * (non-Javadoc)
+	 * @see org.springframework.data.jdbc.core.DataAccessStrategy#acquireLockById(java.lang.Object, org.springframework.data.relational.core.sql.LockMode, java.lang.Class)
+	 */
+	@Override
+	public <T> void acquireLockById(Object id, LockMode lockMode, Class<T> domainType) {
+
+		String acquireLockByIdSql = sql(domainType).getAcquireLockById(lockMode);
+		SqlIdentifierParameterSource parameter = createIdParameterSource(id, domainType);
+
+		operations.query(acquireLockByIdSql, parameter, ResultSet::next);
+	}
+
+	/*
+	 * (non-Javadoc)
+	 * @see org.springframework.data.jdbc.core.DataAccessStrategy#acquireLockAll(org.springframework.data.relational.core.sql.LockMode, java.lang.Class)
+	 */
+	@Override
+	public <T> void acquireLockAll(LockMode lockMode, Class<T> domainType) {
+
+		String acquireLockAllSql = sql(domainType).getAcquireLockAll(lockMode);
+		operations.getJdbcOperations().query(acquireLockAllSql, ResultSet::next);
+	}
+
+	/*
+	 * (non-Javadoc)
 	 * @see org.springframework.data.jdbc.core.DataAccessStrategy#count(java.lang.Class)
 	 */
 	@Override
@@ -314,12 +331,12 @@ public class DefaultDataAccessStrategy implements DataAccessStrategy {
 
 	/*
 	 * (non-Javadoc)
-	 * @see org.springframework.data.jdbc.core.RelationResolver#findAllByPath(org.springframework.data.relational.domain.Identifier, org.springframework.data.mapping.PersistentPropertyPath)
+	 * @see org.springframework.data.jdbc.core.RelationResolver#findAllByPath(org.springframework.data.jdbc.support.Identifier, org.springframework.data.mapping.PersistentPropertyPath)
 	 */
 	@Override
 	@SuppressWarnings("unchecked")
 	public Iterable<Object> findAllByPath(Identifier identifier,
-			PersistentPropertyPath<RelationalPersistentProperty> propertyPath) {
+			PersistentPropertyPath<? extends RelationalPersistentProperty> propertyPath) {
 
 		Assert.notNull(identifier, "identifier must not be null.");
 		Assert.notNull(propertyPath, "propertyPath must not be null.");
@@ -344,21 +361,6 @@ public class DefaultDataAccessStrategy implements DataAccessStrategy {
 		identifier.toMap().forEach(parameterSource::addValue);
 
 		return parameterSource;
-	}
-
-	/*
-	 * (non-Javadoc)
-	 * @see org.springframework.data.jdbc.core.DataAccessStrategy#findAllByProperty(java.lang.Object, org.springframework.data.jdbc.mapping.model.JdbcPersistentProperty)
-	 */
-	@Override
-	@SuppressWarnings("unchecked")
-	public Iterable<Object> findAllByProperty(Object rootId, RelationalPersistentProperty property) {
-
-		Assert.notNull(rootId, "rootId must not be null.");
-
-		Class<?> rootType = property.getOwner().getType();
-		return findAllByPath(Identifier.of(property.getReverseColumnName(), rootId, rootType),
-				context.getPersistentPropertyPath(property.getName(), rootType));
 	}
 
 	/*

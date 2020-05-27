@@ -15,9 +15,9 @@
  */
 package org.springframework.data.relational.core.dialect;
 
-import org.springframework.data.relational.core.sql.render.SelectRenderContext;
 import org.springframework.data.relational.core.sql.IdentifierProcessing;
 import org.springframework.data.relational.core.sql.SqlIdentifier;
+import org.springframework.data.relational.core.sql.render.SelectRenderContext;
 
 /**
  * Represents a dialect that is implemented by a particular database. Please note that not all features are supported by
@@ -26,6 +26,7 @@ import org.springframework.data.relational.core.sql.SqlIdentifier;
  *
  * @author Mark Paluch
  * @author Jens Schauder
+ * @author Myeonghyeon Lee
  * @since 1.1
  */
 public interface Dialect {
@@ -36,6 +37,13 @@ public interface Dialect {
 	 * @return the {@link LimitClause} used by this dialect.
 	 */
 	LimitClause limit();
+
+	/**
+	 * Return the {@link LockClause} used by this dialect.
+	 *
+	 * @return the {@link LockClause} used by this dialect.
+	 */
+	LockClause lock();
 
 	/**
 	 * Returns the array support object that describes how array-typed columns are supported by this dialect.
@@ -62,5 +70,15 @@ public interface Dialect {
 	 */
 	default IdentifierProcessing getIdentifierProcessing() {
 		return IdentifierProcessing.ANSI;
+	}
+
+	/**
+	 * Returns the {@link Escaper} used for {@code LIKE} value escaping.
+	 *
+	 * @return the {@link Escaper} used for {@code LIKE} value escaping.
+	 * @since 2.0
+	 */
+	default Escaper getLikeEscaper() {
+		return Escaper.DEFAULT;
 	}
 }

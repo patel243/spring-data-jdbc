@@ -15,32 +15,31 @@
  */
 package org.springframework.data.relational.core.conversion;
 
-import lombok.RequiredArgsConstructor;
-
-import java.util.Collections;
-import java.util.Optional;
-import java.util.function.Function;
-
 import org.springframework.core.convert.ConversionService;
 import org.springframework.core.convert.support.ConfigurableConversionService;
 import org.springframework.core.convert.support.DefaultConversionService;
 import org.springframework.data.convert.CustomConversions;
 import org.springframework.data.convert.CustomConversions.StoreConversions;
-import org.springframework.data.convert.EntityInstantiators;
 import org.springframework.data.mapping.PersistentEntity;
 import org.springframework.data.mapping.PersistentProperty;
 import org.springframework.data.mapping.PersistentPropertyAccessor;
 import org.springframework.data.mapping.PreferredConstructor.Parameter;
 import org.springframework.data.mapping.context.MappingContext;
 import org.springframework.data.mapping.model.ConvertingPropertyAccessor;
+import org.springframework.data.mapping.model.EntityInstantiators;
 import org.springframework.data.mapping.model.ParameterValueProvider;
 import org.springframework.data.mapping.model.SimpleTypeHolder;
 import org.springframework.data.relational.core.mapping.RelationalPersistentEntity;
 import org.springframework.data.relational.core.mapping.RelationalPersistentProperty;
+import org.springframework.data.util.ClassTypeInformation;
 import org.springframework.data.util.TypeInformation;
 import org.springframework.lang.Nullable;
 import org.springframework.util.Assert;
 import org.springframework.util.ClassUtils;
+
+import java.util.Collections;
+import java.util.Optional;
+import java.util.function.Function;
 
 /**
  * {@link RelationalConverter} that uses a {@link MappingContext} to apply basic conversion of relational values to
@@ -177,7 +176,18 @@ public class BasicRelationalConverter implements RelationalConverter {
 			return null;
 		}
 
-		Class<?> rawType = type.getType();
+		if (getConversions().isSimpleType(value.getClass())) {
+
+			if (ClassTypeInformation.OBJECT != type) {
+
+				if (conversionService.canConvert(value.getClass(), type.getType())) {
+					value = conversionService.convert(value, type.getType());
+				}
+			}
+
+			return getPotentiallyConvertedSimpleWrite(value);
+		}
+
 		RelationalPersistentEntity<?> persistentEntity = context.getPersistentEntity(value.getClass());
 
 		if (persistentEntity != null) {
@@ -186,11 +196,7 @@ public class BasicRelationalConverter implements RelationalConverter {
 			return writeValue(id, type);
 		}
 
-		if (rawType.isInstance(value)) {
-			return getPotentiallyConvertedSimpleWrite(value);
-		}
-
-		return conversionService.convert(value, rawType);
+		return conversionService.convert(value, type.getType());
 	}
 
 	/**
@@ -241,10 +247,16 @@ public class BasicRelationalConverter implements RelationalConverter {
 	 * @param <P>
 	 * @author Mark Paluch
 	 */
-	@RequiredArgsConstructor
 	class ConvertingParameterValueProvider<P extends PersistentProperty<P>> implements ParameterValueProvider<P> {
 
 		private final Function<Parameter<?, P>, Object> delegate;
+
+		ConvertingParameterValueProvider(Function<Parameter<?, P>, Object> delegate) {
+
+			Assert.notNull(delegate, "Delegate must not be null.");
+
+			this.delegate = delegate;
+		}
 
 		/*
 		 * (non-Javadoc)

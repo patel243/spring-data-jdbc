@@ -44,6 +44,18 @@ public abstract class Conditions {
 	}
 
 	/**
+	 * Creates a nested {@link Condition} that is enclosed with parentheses. Useful to combine {@code AND} and {@code OR}
+	 * statements.
+	 *
+	 * @param condition the nested condition.
+	 * @return a {@link NestedCondition}.
+	 * @since 2.0
+	 */
+	public static Condition nest(Condition condition) {
+		return new NestedCondition(condition);
+	}
+
+	/**
 	 * Creates a {@code IS NULL} condition.
 	 *
 	 * @param expression the expression to check for nullability, must not be {@literal null}.
@@ -73,6 +85,32 @@ public abstract class Conditions {
 	 */
 	public static Comparison isNotEqual(Expression leftColumnOrExpression, Expression rightColumnOrExpression) {
 		return Comparison.create(leftColumnOrExpression, "!=", rightColumnOrExpression);
+	}
+
+	/**
+	 * Creates a {@code BETWEEN} {@link Condition}.
+	 *
+	 * @param columnOrExpression left side of the comparison.
+	 * @param begin begin value of the comparison.
+	 * @param end end value of the comparison.
+	 * @return the {@link Comparison} condition.
+	 * @since 2.0
+	 */
+	public static Between between(Expression columnOrExpression, Expression begin, Expression end) {
+		return Between.create(columnOrExpression, begin, end);
+	}
+
+	/**
+	 * Creates a {@code NOT BETWEEN} {@link Condition}.
+	 *
+	 * @param columnOrExpression left side of the comparison.
+	 * @param begin begin value of the comparison.
+	 * @param end end value of the comparison.
+	 * @return the {@link Comparison} condition.
+	 * @since 2.0
+	 */
+	public static Between notBetween(Expression columnOrExpression, Expression begin, Expression end) {
+		return between(columnOrExpression, begin, end).not();
 	}
 
 	/**
@@ -130,6 +168,18 @@ public abstract class Conditions {
 	 */
 	public static Like like(Expression leftColumnOrExpression, Expression rightColumnOrExpression) {
 		return Like.create(leftColumnOrExpression, rightColumnOrExpression);
+	}
+
+	/**
+	 * Creates a {@code NOT LIKE} {@link Condition}.
+	 *
+	 * @param leftColumnOrExpression left side of the comparison.
+	 * @param rightColumnOrExpression right side of the comparison.
+	 * @return the {@link Comparison} condition.
+	 * @since 2.0
+	 */
+	public static Like notLike(Expression leftColumnOrExpression, Expression rightColumnOrExpression) {
+		return Like.create(leftColumnOrExpression, rightColumnOrExpression).not();
 	}
 
 	/**
